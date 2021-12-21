@@ -78,24 +78,35 @@ impl SignalMessage {
         sender_identity_key: &IdentityKey,
         receiver_identity_key: &IdentityKey,
     ) -> Result<Self> {
+
         let message = proto::wire::SignalMessage {
             ratchet_key: Some(sender_ratchet_key.serialize().into_vec()),
             counter: Some(counter),
             previous_counter: Some(previous_counter),
             ciphertext: Some(Vec::<u8>::from(&ciphertext[..])),
         };
+        // Create a vector of size 1 + encoded_length + MAC_length
         let mut serialized = vec![0u8; 1 + message.encoded_len() + Self::MAC_LENGTH];
+
+        // SET the first byte of the vector as the version
         serialized[0] = ((message_version & 0xF) << 4) | CIPHERTEXT_MESSAGE_CURRENT_VERSION;
+
+        // Encode the message and put the result in serialized[1:encoded_length+1]
         message.encode(&mut &mut serialized[1..message.encoded_len() + 1])?;
+
         let msg_len_for_mac = serialized.len() - Self::MAC_LENGTH;
+        // Compute the mac from the begining of serialized
         let mac = Self::compute_mac(
             sender_identity_key,
             receiver_identity_key,
             mac_key,
             &serialized[..msg_len_for_mac],
         )?;
+        // Put the mac at the end of serialized
         serialized[msg_len_for_mac..].copy_from_slice(&mac);
+        // Convert the vector into a box
         let serialized = serialized.into_boxed_slice();
+        
         Ok(Self {
             message_version,
             sender_ratchet_key,

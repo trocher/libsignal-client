@@ -27,12 +27,17 @@ pub async fn message_encrypt(
     identity_store: &mut dyn IdentityKeyStore,
     ctx: Context,
 ) -> Result<CiphertextMessage> {
+
+    // Load the session record form the session store
     let mut session_record = session_store
         .load_session(&remote_address, ctx)
         .await?
         .ok_or(SignalProtocolError::SessionNotFound)?;
+
+    // Load the state of the session from the session record
     let session_state = session_record.session_state_mut()?;
 
+    // Return sender chain key
     let chain_key = session_state.get_sender_chain_key()?;
 
     let message_keys = chain_key.message_keys()?;

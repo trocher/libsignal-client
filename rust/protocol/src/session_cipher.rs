@@ -42,6 +42,7 @@ pub async fn message_encrypt(
 
     let message_keys = chain_key.message_keys()?;
 
+    // get the actual sender_ratchet_key
     let sender_ephemeral = session_state.sender_ratchet_key()?;
     let previous_counter = session_state.previous_counter()?;
     let session_version = session_state.session_version()? as u8;
@@ -88,6 +89,7 @@ pub async fn message_encrypt(
         CiphertextMessage::SignalMessage(SignalMessage::new(
             session_version,
             message_keys.mac_key(),
+            // update sent
             sender_ephemeral,
             chain_key.index(),
             previous_counter,
@@ -97,6 +99,7 @@ pub async fn message_encrypt(
         )?)
     };
 
+    // Symmetric ratchet step // -> Update the sender chain key
     session_state.set_sender_chain_key(&chain_key.next_chain_key()?)?;
 
     // XXX why is this check after everything else?!!
@@ -447,6 +450,7 @@ fn decrypt_message_with_state<R: Rng + CryptoRng>(
     remote_address: &ProtocolAddress,
     csprng: &mut R,
 ) -> Result<Vec<u8>> {
+
     if !state.has_sender_chain()? {
         return Err(SignalProtocolError::InvalidMessage(
             "No session available to decrypt",
@@ -460,9 +464,14 @@ fn decrypt_message_with_state<R: Rng + CryptoRng>(
         ));
     }
 
+    // The sender DH key
     let their_ephemeral = ciphertext.sender_ratchet_key();
+    // sender counter
     let counter = ciphertext.counter();
+
+    // Perform the DH ratchet step if needed
     let chain_key = get_or_create_chain_key(state, their_ephemeral, remote_address, csprng)?;
+    // Find the right message key for the given message
     let message_keys =
         get_or_create_message_key(state, their_ephemeral, remote_address, &chain_key, counter)?;
 
@@ -521,6 +530,8 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
     remote_address: &ProtocolAddress,
     csprng: &mut R,
 ) -> Result<ChainKey> {
+
+    // If the received sender key is not new, nothing to do
     if let Some(chain) = state.get_receiver_chain_key(their_ephemeral)? {
         log::debug!("{} has existing receiver chain.", remote_address);
         return Ok(chain);
@@ -528,17 +539,31 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
 
     log::info!("{} creating new chains.", remote_address);
 
+    // The receiver root key
     let root_key = state.root_key()?;
+
+    // The receiver DH private key
     let our_ephemeral = state.sender_ratchet_private_key()?;
+
+    // A root chain ratchet producing both a tuple containing a new root key and a receiver chain 
+    // matching the received sender chain
     let receiver_chain = root_key.create_chain(their_ephemeral, &our_ephemeral)?;
+
+    // Create a new Public and Private key for the receiver
     let our_new_ephemeral = curve::KeyPair::generate(csprng);
+    
+    // Again a root chain ratchet producing a new root key and a sender chain for later
     let sender_chain = receiver_chain
         .0
         .create_chain(their_ephemeral, &our_new_ephemeral.private_key)?;
 
+    // Set the new root key (2 ratchet away from the one stored in the state before this function call)
     state.set_root_key(&sender_chain.0)?;
+
+    // Set the receiver chain computed earlier 
     state.add_receiver_chain(their_ephemeral, &receiver_chain.1)?;
 
+    // Handle lost message or out of order ones
     let current_index = state.get_sender_chain_key()?.index();
     let previous_index = if current_index > 0 {
         current_index - 1
@@ -546,8 +571,11 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
         0
     };
     state.set_previous_counter(previous_index)?;
+    
+    // Set the sender chain computed earlier 
     state.set_sender_chain(&our_new_ephemeral, &sender_chain.1)?;
 
+    // Return the receiver chain
     Ok(receiver_chain.1)
 }
 
@@ -560,6 +588,7 @@ fn get_or_create_message_key(
 ) -> Result<MessageKeys> {
     let chain_index = chain_key.index();
 
+    // If the message was lost or some new messages arrived before it, simply fetch the stored message key
     if chain_index > counter {
         return match state.get_message_keys(their_ephemeral, counter)? {
             Some(keys) => Ok(keys),
@@ -592,7 +621,7 @@ fn get_or_create_message_key(
     }
 
     let mut chain_key = chain_key.clone();
-
+    // Ratchet the receiver chain until reaching the message key corresponding to the given message
     while chain_key.index() < counter {
         let message_keys = chain_key.message_keys()?;
         state.set_message_keys(their_ephemeral, &message_keys)?;

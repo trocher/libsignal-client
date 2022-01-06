@@ -531,7 +531,7 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
     csprng: &mut R,
 ) -> Result<ChainKey> {
 
-    // If the received sender key is not new, nothing to do
+    // If the received public key is not new, nothing to do
     if let Some(chain) = state.get_receiver_chain_key(their_ephemeral)? {
         log::debug!("{} has existing receiver chain.", remote_address);
         return Ok(chain);
@@ -548,32 +548,11 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
     // A root chain ratchet producing both a tuple containing a new root key and a receiver chain 
     // matching the received sender chain
     let receiver_chain = root_key.create_chain(their_ephemeral, &our_ephemeral)?;
-
-    // Create a new Public and Private key for the receiver
-    let our_new_ephemeral = curve::KeyPair::generate(csprng);
     
-    // Again a root chain ratchet producing a new root key and a sender chain for later
-    let sender_chain = receiver_chain
-        .0
-        .create_chain(their_ephemeral, &our_new_ephemeral.private_key)?;
-
-    // Set the new root key (2 ratchet away from the one stored in the state before this function call)
-    state.set_root_key(&sender_chain.0)?;
+    state.set_root_key(&receiver_chain.0)?;
 
     // Set the receiver chain computed earlier 
     state.add_receiver_chain(their_ephemeral, &receiver_chain.1)?;
-
-    // Handle lost message or out of order ones
-    let current_index = state.get_sender_chain_key()?.index();
-    let previous_index = if current_index > 0 {
-        current_index - 1
-    } else {
-        0
-    };
-    state.set_previous_counter(previous_index)?;
-    
-    // Set the sender chain computed earlier 
-    state.set_sender_chain(&our_new_ephemeral, &sender_chain.1)?;
 
     // Return the receiver chain
     Ok(receiver_chain.1)

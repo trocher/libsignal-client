@@ -528,7 +528,7 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
     state: &mut SessionState,
     their_ephemeral: &curve::PublicKey,
     remote_address: &ProtocolAddress,
-    csprng: &mut R,
+    _csprng: &mut R,
 ) -> Result<ChainKey> {
 
     // If the received public key is not new, nothing to do
@@ -553,6 +553,8 @@ fn get_or_create_chain_key<R: Rng + CryptoRng>(
 
     // Set the receiver chain computed earlier 
     state.add_receiver_chain(their_ephemeral, &receiver_chain.1)?;
+  
+    state.set_previous_counter(0)?;
 
     // Return the receiver chain
     Ok(receiver_chain.1)

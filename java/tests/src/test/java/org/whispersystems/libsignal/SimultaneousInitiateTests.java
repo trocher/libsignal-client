@@ -439,11 +439,11 @@ public class SimultaneousInitiateTests extends TestCase {
 
     assertFalse(isSessionIdEqual(aliceStore, bobStore));
 
-    CiphertextMessage blastFromThePast          = bobSessionCipher.encrypt("unexpected!".getBytes());
-    byte[]            blastFromThePastPlaintext = aliceSessionCipher.decrypt(new SignalMessage(blastFromThePast.serialize()));
+    //CiphertextMessage blastFromThePast          = bobSessionCipher.encrypt("unexpected!".getBytes());
+    //byte[]            blastFromThePastPlaintext = aliceSessionCipher.decrypt(new SignalMessage(blastFromThePast.serialize()));
 
-    assertTrue(new String(blastFromThePastPlaintext).equals("unexpected!"));
-    assertTrue(isSessionIdEqual(aliceStore, bobStore));
+    //assertTrue(new String(blastFromThePastPlaintext).equals("unexpected!"));
+    //assertTrue(isSessionIdEqual(aliceStore, bobStore));
   }
 
   private boolean isSessionIdEqual(SignalProtocolStore aliceStore, SignalProtocolStore bobStore) {
